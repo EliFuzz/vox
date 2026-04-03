@@ -1,0 +1,12 @@
+Yeah.# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+target
+
+# IDE
+.vscode
+
+# App
+test_artifacts
