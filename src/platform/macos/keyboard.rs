@@ -4,7 +4,9 @@ use crate::tray::TrayMsg;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
+
 const DOUBLE_TAP_WINDOW_MS: u128 = 500;
+
 pub fn listen(
     is_recording: Arc<AtomicBool>,
     recording_mode: Arc<AtomicU8>,
@@ -15,7 +17,7 @@ pub fn listen(
 ) {
     let key = crate::settings::load()
         .shortcut
-        .unwrap_or(rdev::Key::Function);
+        .unwrap_or(rdev::Key::AltGr);
     let mut key_held = false;
     let mut last_key_tap: Option<Instant> = None;
     if let Err(e) = rdev::listen(move |event| {

@@ -15,7 +15,7 @@ pub fn listen(
 ) {
     let key = crate::settings::load()
         .shortcut
-        .unwrap_or(rdev::Key::Function);
+        .unwrap_or(rdev::Key::AltGr);
     let mut key_held = false;
     let mut last_key_tap: Option<Instant> = None;
     if let Err(e) = rdev::listen(move |event| {
