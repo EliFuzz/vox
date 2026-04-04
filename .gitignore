@@ -3,6 +3,7 @@ Yeah.# OS
 Thumbs.db
 
 # Build artifacts
+.ort-cache
 target
 
 # IDE
