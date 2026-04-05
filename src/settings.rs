@@ -36,53 +36,25 @@ pub enum Mode {
     PushToTalk,
     ToggleToTalk,
 }
+pub const DEFAULT_SHORTCUT: &[rdev::Key] = &[rdev::Key::Function, rdev::Key::ControlLeft];
+
 #[derive(Deserialize, Serialize, Clone, Default)]
 pub struct Settings {
     #[serde(default)]
     pub model: ModelId,
     #[serde(default)]
     pub mode: Mode,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "deserialize_shortcut"
-    )]
-    pub shortcut: Option<rdev::Key>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shortcut: Option<Vec<rdev::Key>>,
     pub input_device: Option<String>,
 }
-fn deserialize_shortcut<'de, D>(d: D) -> Result<Option<rdev::Key>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::{de::Error, Deserialize};
-    let Some(mut key) = Option::<String>::deserialize(d)? else {
-        return Ok(None);
-    };
-    if serde_json::from_value::<rdev::Key>(key.clone().into()).is_err() {
-        let mut parts = key.split('_').collect::<Vec<_>>();
-        if parts
-            .first()
-            .map(|part| part.eq_ignore_ascii_case("ARROW"))
-            .unwrap_or(false)
-        {
-            parts.rotate_left(1);
-        }
-        key = parts
-            .into_iter()
-            .map(|part| {
-                let mut chars = part.chars();
-                chars
-                    .next()
-                    .map(|c| {
-                        c.to_uppercase().collect::<String>() + &chars.as_str().to_ascii_lowercase()
-                    })
-                    .unwrap_or_default()
-            })
-            .collect();
-    }
-    serde_json::from_value(key.into())
-        .map(Some)
-        .map_err(D::Error::custom)
+
+pub fn resolve_shortcut(shortcut: &Option<Vec<rdev::Key>>) -> Vec<rdev::Key> {
+    shortcut
+        .as_ref()
+        .filter(|keys| !keys.is_empty())
+        .cloned()
+        .unwrap_or_else(|| DEFAULT_SHORTCUT.to_vec())
 }
 pub fn vox_dir() -> PathBuf {
     crate::platform::home_dir().join(".vox")
@@ -115,24 +87,4 @@ pub fn model_ready(id: ModelId) -> bool {
     crate::asr::ready_check_files(id)
         .iter()
         .all(|f| dir.join(f).exists())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn parses_arrow_shortcut_alias() {
-        assert_eq!(
-            serde_json::from_str::<Settings>(r#"{"shortcut":"ARROW_UP"}"#)
-                .unwrap()
-                .shortcut,
-            Some(rdev::Key::UpArrow)
-        );
-        assert_eq!(
-            serde_json::from_str::<Settings>(r#"{"shortcut":"arrow_up"}"#)
-                .unwrap()
-                .shortcut,
-            Some(rdev::Key::UpArrow)
-        );
-    }
 }
