@@ -13,7 +13,7 @@ No giant window. No extra editor. No copy/paste dance.
 
 - **local transcription** - your speech becomes text on-device
 - **cursor-first output** - words land in the app you're already using
-- **two recording styles** - push-to-talk or toggle-to-talk
+- **two recording styles** - push-to-talk or toggle-to-talk (Press `Fn + Left Control` to talk, release to paste. Or double-press to toggle)
 - **pick your mic, pick your model** - without digging through settings files
 
 ## Quick start
