@@ -23,7 +23,6 @@ pub enum TrayState {
 pub enum TrayMsg {
     SetState(TrayState),
     UpdateAvailable(String),
-    Quit,
 }
 
 pub fn run_tray(
@@ -113,9 +112,6 @@ pub fn run_tray(
         }
         TrayMsg::UpdateAvailable(version) => {
             version_item.set_text(&format!("vox v{} → v{version} ↑", crate::VERSION));
-        }
-        TrayMsg::Quit => {
-            should_quit.store(true, Ordering::Release);
         }
     };
     loop {

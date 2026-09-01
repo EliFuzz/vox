@@ -27,20 +27,13 @@ pub const MODE_PTT: u8 = 1;
 pub const MODE_TTT: u8 = 2;
 
 static QUIT_FLAG: OnceLock<Arc<AtomicBool>> = OnceLock::new();
-static CTRLC_TRAY_TX: OnceLock<std::sync::mpsc::Sender<tray::TrayMsg>> = OnceLock::new();
-
-fn register_ctrlc(quit: Arc<AtomicBool>, tx: std::sync::mpsc::Sender<tray::TrayMsg>) {
+fn register_ctrlc(quit: Arc<AtomicBool>) {
     QUIT_FLAG.get_or_init(|| quit);
-    CTRLC_TRAY_TX.get_or_init(|| tx);
 
     extern "C" fn handler(_: i32) {
         if let Some(flag) = QUIT_FLAG.get() {
             flag.store(true, Ordering::Release);
         }
-        if let Some(tx) = CTRLC_TRAY_TX.get() {
-            tx.send(tray::TrayMsg::Quit).ok();
-        }
-        std::process::exit(0);
     }
 
     extern "C" {
@@ -48,7 +41,7 @@ fn register_ctrlc(quit: Arc<AtomicBool>, tx: std::sync::mpsc::Sender<tray::TrayM
     }
 
     unsafe {
-        signal(2, handler as usize);
+        signal(2, handler as *const () as usize);
     }
 }
 
@@ -137,14 +130,19 @@ fn main() {
     std::thread::spawn(move || {
         if let Err(e) = model_download::ensure_vad() {
             eprintln!("vad download failed: {e}");
+            tx.send(tray::TrayMsg::SetState(tray::TrayState::Off)).ok();
+            return;
         }
         let vad_path = settings::vad_model_path();
-        if vad_path.exists() {
-            vad_h.get_or_init(|| Mutex::new(vad::Vad::new(&vad_path, 0.5)));
+        if !vad_path.exists() {
+            tx.send(tray::TrayMsg::SetState(tray::TrayState::Off)).ok();
+            return;
         }
+        let vad = std::thread::spawn(move || vad::Vad::new(&vad_path, 0.5));
+        let asr = settings::model_ready(model_id).then(|| load_asr_model(model_id));
+        vad_h.get_or_init(|| Mutex::new(vad.join().expect("vad load panicked")));
 
-        if settings::model_ready(model_id) {
-            let asr = load_asr_model(model_id);
+        if let Some(asr) = asr {
             *asr_h.lock().unwrap() = Some(asr);
             ready.store(true, Ordering::Release);
         }
@@ -172,7 +170,7 @@ fn main() {
     );
     std::thread::spawn(move || platform::keyboard::listen(is_rec, mode, aud, rdy, quit, tx));
 
-    register_ctrlc(should_quit.clone(), tray_tx.clone());
+    register_ctrlc(should_quit.clone());
     start_updater(tray_tx.clone(), should_quit.clone());
     tray::run_tray(
         tray_rx,

@@ -26,8 +26,6 @@ pub struct Asr {
     engine: Box<dyn AsrEngine>,
 }
 
-unsafe impl Sync for Asr {}
-
 impl Asr {
     pub fn new(model_id: ModelId, model_dir: &Path) -> Self {
         let engine: Box<dyn AsrEngine> = match model_id {

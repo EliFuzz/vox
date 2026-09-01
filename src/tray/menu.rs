@@ -56,43 +56,40 @@ pub(crate) fn handle_menu_event(
                 for (mi, &avail_id) in model_items.iter().zip(ModelId::ALL.iter()) {
                     mi.set_checked(avail_id == model_id);
                 }
+                load_cancel.store(true, Ordering::Release);
+                if asr_holder.lock().unwrap().is_some() && crate::settings::load().model == model_id
+                {
+                    tray_tx.send(TrayMsg::SetState(TrayState::Off)).ok();
+                    return false;
+                }
                 let asr_h = asr_holder.clone();
                 let ready = models_ready.clone();
                 let tx_clone = tray_tx.clone();
                 tray.set_icon(Some(icons[TrayState::Loading as usize].clone()))
                     .ok();
-                ready.store(false, Ordering::Release);
-                load_cancel.store(true, Ordering::Release);
-                drop(asr_h.lock().unwrap().take());
                 let cancel = Arc::new(AtomicBool::new(false));
                 *load_cancel = cancel.clone();
                 std::thread::spawn(move || {
-                    let mut cfg = crate::settings::load();
-                    cfg.model = model_id;
-                    crate::settings::save(&cfg);
-                    match crate::settings::model_ready(model_id) {
-                        true => {}
-                        false => match crate::model_download::ensure_model(model_id) {
-                            Ok(()) => {}
-                            Err(e) => {
-                                eprintln!("model download failed for {}: {e}", model_id.as_str());
-                                tx_clone.send(TrayMsg::SetState(TrayState::Off)).ok();
-                                return;
-                            }
-                        },
+                    if let Err(e) = crate::model_download::ensure_model(model_id) {
+                        eprintln!("model download failed for {}: {e}", model_id.as_str());
+                        if !cancel.load(Ordering::Acquire) {
+                            tx_clone.send(TrayMsg::SetState(TrayState::Off)).ok();
+                        }
+                        return;
                     }
                     if cancel.load(Ordering::Acquire) {
-                        tx_clone.send(TrayMsg::SetState(TrayState::Off)).ok();
                         return;
                     }
                     let dir = crate::settings::model_path(model_id);
                     let asr = crate::asr::Asr::new(model_id, &dir);
+                    let mut holder = asr_h.lock().unwrap();
                     if cancel.load(Ordering::Acquire) {
-                        drop(asr);
-                        tx_clone.send(TrayMsg::SetState(TrayState::Off)).ok();
                         return;
                     }
-                    *asr_h.lock().unwrap() = Some(asr);
+                    *holder = Some(asr);
+                    let mut cfg = crate::settings::load();
+                    cfg.model = model_id;
+                    crate::settings::save(&cfg);
                     ready.store(true, Ordering::Release);
                     tx_clone.send(TrayMsg::SetState(TrayState::Off)).ok();
                 });

@@ -5,9 +5,6 @@ use std::path::Path;
 pub(super) const SAMPLE_RATE: usize = 16_000;
 pub(super) const MAX_CHUNK_SAMPLES: usize = SAMPLE_RATE * 30;
 pub(super) const MAX_TOKENS_PER_SECOND: f32 = 6.5;
-pub(super) const TYPICAL_FEATURES: usize = 256;
-pub(super) const TYPICAL_MEMORY: usize = 256;
-pub(super) const TYPICAL_KV: usize = 64 * 1024;
 
 #[derive(Clone, Default, Deserialize)]
 #[serde(default)]
@@ -114,37 +111,44 @@ pub(super) struct StreamingState {
     pub(super) v_cross: Vec<f32>,
     pub(super) cross_len: i64,
     pub(super) cross_kv_valid: bool,
-    pub(super) logits_buffer: Vec<f32>,
 }
 
 impl StreamingState {
     pub(super) fn new(cfg: &StreamingConfig) -> Self {
-        let enc_dim = cfg.encoder_dim as usize;
-        let dec_dim = cfg.decoder_dim as usize;
         Self {
             sample_buffer: vec![0.0; 79],
             sample_len: 0,
             conv1_buffer: vec![0.0; cfg.d_model_frontend as usize * 4],
             conv2_buffer: vec![0.0; cfg.c1 as usize * 4],
             frame_count: 0,
-            accumulated_features: Vec::with_capacity(TYPICAL_FEATURES * enc_dim),
+            accumulated_features: Vec::new(),
             accumulated_feature_count: 0,
             encoder_frames_emitted: 0,
             adapter_pos_offset: 0,
-            memory: Vec::with_capacity(TYPICAL_MEMORY * dec_dim),
+            memory: Vec::new(),
             memory_len: 0,
-            k_self: Vec::with_capacity(TYPICAL_KV),
-            v_self: Vec::with_capacity(TYPICAL_KV),
+            k_self: Vec::new(),
+            v_self: Vec::new(),
             cache_seq_len: 0,
-            k_cross: Vec::with_capacity(TYPICAL_KV),
-            v_cross: Vec::with_capacity(TYPICAL_KV),
+            k_cross: Vec::new(),
+            v_cross: Vec::new(),
             cross_len: 0,
             cross_kv_valid: false,
-            logits_buffer: Vec::with_capacity(cfg.vocab_size as usize),
         }
     }
 
-    pub(super) fn reset(&mut self, cfg: &StreamingConfig) {
-        *self = Self::new(cfg);
+    pub(super) fn reset(&mut self) {
+        self.sample_buffer.fill(0.0);
+        self.sample_len = 0;
+        self.conv1_buffer.fill(0.0);
+        self.conv2_buffer.fill(0.0);
+        self.frame_count = 0;
+        self.accumulated_features.clear();
+        self.accumulated_feature_count = 0;
+        self.encoder_frames_emitted = 0;
+        self.adapter_pos_offset = 0;
+        self.memory.clear();
+        self.memory_len = 0;
+        self.cross_kv_valid = false;
     }
 }

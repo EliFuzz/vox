@@ -34,11 +34,11 @@ impl MoonshineAsr {
     fn prewarm(&mut self) {
         let dummy = vec![0.0f32; SAMPLE_RATE];
         let _ = self.transcribe_batch(&dummy);
-        self.state.reset(&self.config);
+        self.state.reset();
     }
 
     fn transcribe_batch(&mut self, audio: &[f32]) -> String {
-        self.state.reset(&self.config);
+        self.state.reset();
         process_frontend(&mut self.sessions, &self.config, &mut self.state, audio);
         run_encoder(&mut self.sessions, &self.config, &mut self.state, true);
         if self.state.memory_len == 0 {

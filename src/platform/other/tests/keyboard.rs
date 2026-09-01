@@ -52,14 +52,26 @@ fn wrong_keys_held() {
 
 #[test]
 fn three_key_combo() {
-    let shortcut = [rdev::Key::ControlLeft, rdev::Key::ShiftLeft, rdev::Key::KeyA];
-    let held = HashSet::from([rdev::Key::ControlLeft, rdev::Key::ShiftLeft, rdev::Key::KeyA]);
+    let shortcut = [
+        rdev::Key::ControlLeft,
+        rdev::Key::ShiftLeft,
+        rdev::Key::KeyA,
+    ];
+    let held = HashSet::from([
+        rdev::Key::ControlLeft,
+        rdev::Key::ShiftLeft,
+        rdev::Key::KeyA,
+    ]);
     assert!(all_shortcut_keys_held(&held, &shortcut));
 }
 
 #[test]
 fn three_key_combo_missing_one() {
-    let shortcut = [rdev::Key::ControlLeft, rdev::Key::ShiftLeft, rdev::Key::KeyA];
+    let shortcut = [
+        rdev::Key::ControlLeft,
+        rdev::Key::ShiftLeft,
+        rdev::Key::KeyA,
+    ];
     let held = HashSet::from([rdev::Key::ControlLeft, rdev::Key::ShiftLeft]);
     assert!(!all_shortcut_keys_held(&held, &shortcut));
 }

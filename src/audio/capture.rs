@@ -6,7 +6,8 @@ use rubato::{
     Async, FixedAsync, Resampler, SincInterpolationParameters, SincInterpolationType,
     WindowFunction,
 };
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
 const RING_CAPACITY: usize = 160_000;
@@ -38,35 +39,34 @@ fn resampler_and_chunk_size(native_sample_rate: u32) -> (Option<Async<f32>>, usi
 pub struct AudioCapture {
     device_name: Mutex<Option<String>>,
     stream: Mutex<Option<cpal::Stream>>,
-    producer: Mutex<Option<rtrb::Producer<f32>>>,
     consumer: Mutex<Option<rtrb::Consumer<f32>>>,
-    out_buffer: Mutex<Vec<f32>>,
+    out_buffer: Mutex<VecDeque<f32>>,
     is_active: Arc<AtomicBool>,
+    dropped_samples: Arc<AtomicUsize>,
     resampler: Mutex<Option<Async<f32>>>,
     resample_buf: Mutex<Vec<f32>>,
     resample_chunk_size: Mutex<usize>,
-    data_ready: Arc<(Mutex<bool>, Condvar)>,
+    data_ready: Arc<(Mutex<()>, Condvar)>,
 }
 unsafe impl Send for AudioCapture {}
 unsafe impl Sync for AudioCapture {}
 
 impl AudioCapture {
     pub fn new_with_device(device_name: Option<&str>) -> Self {
-        let (producer, consumer) = rtrb::RingBuffer::new(RING_CAPACITY);
         Self {
             device_name: Mutex::new(device_name.map(|s| s.to_string())),
             stream: Mutex::new(None),
-            producer: Mutex::new(Some(producer)),
-            consumer: Mutex::new(Some(consumer)),
-            out_buffer: Mutex::new(Vec::with_capacity(TARGET_SAMPLE_RATE as usize * 10)),
+            consumer: Mutex::new(None),
+            out_buffer: Mutex::new(VecDeque::with_capacity(TARGET_SAMPLE_RATE as usize * 10)),
             is_active: Arc::new(AtomicBool::new(false)),
+            dropped_samples: Arc::new(AtomicUsize::new(0)),
             resampler: Mutex::new(None),
             resample_buf: Mutex::new(Vec::with_capacity(32_000)),
             resample_chunk_size: Mutex::new(0),
-            data_ready: Arc::new((Mutex::new(false), Condvar::new())),
+            data_ready: Arc::new((Mutex::new(()), Condvar::new())),
         }
     }
-    pub fn data_ready_signal(&self) -> Arc<(Mutex<bool>, Condvar)> {
+    pub fn data_ready_signal(&self) -> Arc<(Mutex<()>, Condvar)> {
         self.data_ready.clone()
     }
     fn init_stream(&self) {
@@ -97,38 +97,36 @@ impl AudioCapture {
         *self.resampler.lock().unwrap() = new_resampler;
         *self.resample_chunk_size.lock().unwrap() = chunk_size;
         let (producer, consumer) = rtrb::RingBuffer::new(RING_CAPACITY);
-        *self.producer.lock().unwrap() = Some(producer);
         *self.consumer.lock().unwrap() = Some(consumer);
-        let producer_for_stream = {
-            let mut guard = self.producer.lock().unwrap();
-            guard.take().expect("producer missing")
-        };
-        let producer_cell = Arc::new(Mutex::new(producer_for_stream));
         let active_clone = self.is_active.clone();
+        let dropped_samples = self.dropped_samples.clone();
         let data_signal = self.data_ready.clone();
         let built_stream = match config.sample_format() {
             SampleFormat::F32 => build_stream::<f32>(
                 &device,
                 &config.into(),
                 native_channels,
-                producer_cell,
+                producer,
                 active_clone,
+                dropped_samples,
                 data_signal,
             ),
             SampleFormat::I16 => build_stream::<i16>(
                 &device,
                 &config.into(),
                 native_channels,
-                producer_cell,
+                producer,
                 active_clone,
+                dropped_samples,
                 data_signal,
             ),
             SampleFormat::I32 => build_stream::<i32>(
                 &device,
                 &config.into(),
                 native_channels,
-                producer_cell,
+                producer,
                 active_clone,
+                dropped_samples,
                 data_signal,
             ),
             f => panic!("unsupported sample format: {f}"),
@@ -140,9 +138,7 @@ impl AudioCapture {
         if let Some(s) = self.stream.lock().unwrap().take() {
             drop(s);
         }
-        let (producer, consumer) = rtrb::RingBuffer::new(RING_CAPACITY);
-        *self.producer.lock().unwrap() = Some(producer);
-        *self.consumer.lock().unwrap() = Some(consumer);
+        *self.consumer.lock().unwrap() = None;
         self.out_buffer.lock().unwrap().clear();
         self.resample_buf.lock().unwrap().clear();
         *self.resampler.lock().unwrap() = None;
@@ -156,6 +152,7 @@ impl AudioCapture {
         if let Some(stream) = guard.as_ref() {
             self.out_buffer.lock().unwrap().clear();
             self.resample_buf.lock().unwrap().clear();
+            self.dropped_samples.store(0, Ordering::Relaxed);
             self.is_active.store(true, Ordering::Release);
             stream.play().expect("failed to start audio stream");
         }
@@ -167,7 +164,11 @@ impl AudioCapture {
             stream.pause().ok();
         }
     }
-    pub fn drain_chunk(&self, max_samples: usize) -> Vec<f32> {
+    pub fn dropped_samples(&self) -> usize {
+        self.dropped_samples.load(Ordering::Relaxed)
+    }
+    pub fn drain_into(&self, max_samples: usize, destination: &mut Vec<f32>) {
+        destination.clear();
         {
             let mut consumer_guard = self.consumer.lock().unwrap();
             if let Some(ref mut consumer) = *consumer_guard {
@@ -189,25 +190,30 @@ impl AudioCapture {
         if let Some(ref mut r) = *resampler {
             let mut rbuf = self.resample_buf.lock().unwrap();
             let mut out = self.out_buffer.lock().unwrap();
-            while rbuf.len() >= chunk_size {
-                let chunk: Vec<f32> = rbuf.drain(..chunk_size).collect();
+            let mut consumed = 0;
+            while rbuf.len() - consumed >= chunk_size {
+                let chunk = &rbuf[consumed..consumed + chunk_size];
                 let adapter =
-                    InterleavedSlice::new(&chunk, 1, chunk_size).expect("InterleavedSlice failed");
+                    InterleavedSlice::new(chunk, 1, chunk_size).expect("InterleavedSlice failed");
                 if let Ok(result) = r.process(&adapter, 0, None) {
                     let samples = result.take_data();
-                    out.extend_from_slice(&samples);
+                    out.extend(samples);
                 }
+                consumed += chunk_size;
+            }
+            if consumed > 0 {
+                rbuf.drain(..consumed);
             }
         }
         if no_resampler {
             let mut rbuf = self.resample_buf.lock().unwrap();
             if !rbuf.is_empty() {
-                self.out_buffer.lock().unwrap().extend_from_slice(&rbuf);
+                self.out_buffer.lock().unwrap().extend(rbuf.iter().copied());
                 rbuf.clear();
             }
         }
         let mut out = self.out_buffer.lock().unwrap();
         let n = max_samples.min(out.len());
-        out.drain(..n).collect()
+        destination.extend(out.drain(..n));
     }
 }

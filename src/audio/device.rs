@@ -1,6 +1,6 @@
 use cpal::traits::{DeviceTrait, HostTrait};
 use cpal::{Sample, SizedSample};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
 pub(in crate::audio) const TARGET_SAMPLE_RATE: u32 = 16000;
@@ -54,14 +54,16 @@ pub(in crate::audio) fn build_stream<T: Sample + SizedSample + Send + 'static>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     channels: u16,
-    producer: Arc<Mutex<rtrb::Producer<f32>>>,
+    mut producer: rtrb::Producer<f32>,
     is_active: Arc<AtomicBool>,
-    data_signal: Arc<(Mutex<bool>, Condvar)>,
+    dropped_samples: Arc<AtomicUsize>,
+    data_signal: Arc<(Mutex<()>, Condvar)>,
 ) -> cpal::Stream
 where
     f32: cpal::FromSample<T>,
 {
     let mut mono_buf: Vec<f32> = Vec::with_capacity(4096);
+    let samples_per_chunk = 4096 * channels as usize;
     device
         .build_input_stream(
             config,
@@ -69,18 +71,15 @@ where
                 if !is_active.load(Ordering::Acquire) {
                     return;
                 }
-                mono_buf.clear();
-                to_mono_f32_into(data, channels, &mut mono_buf);
-                if let Ok(mut p) = producer.try_lock() {
-                    p.push_partial_slice(&mono_buf);
+                for samples in data.chunks(samples_per_chunk) {
+                    mono_buf.clear();
+                    to_mono_f32_into(samples, channels, &mut mono_buf);
+                    let (_, remainder) = producer.push_partial_slice(&mono_buf);
+                    dropped_samples.fetch_add(remainder.len(), Ordering::Relaxed);
                 }
-                let (lock, cvar) = &*data_signal;
-                if let Ok(mut ready) = lock.try_lock() {
-                    *ready = true;
-                    cvar.notify_one();
-                }
+                data_signal.1.notify_one();
             },
-            |_err: cpal::StreamError| {},
+            |err| eprintln!("audio stream error: {err}"),
             None,
         )
         .expect("failed to build input stream")

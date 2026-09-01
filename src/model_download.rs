@@ -103,7 +103,7 @@ where
     for attempt in 0..=MAX_RETRIES {
         match fetch(url, dest) {
             Ok(()) => return Ok(()),
-            Err(e) if attempt < MAX_RETRIES => {
+            Err(_) if attempt < MAX_RETRIES => {
                 cleanup_dir(dest);
                 std::thread::sleep(retry_base_delay * 2u32.pow(attempt));
             }

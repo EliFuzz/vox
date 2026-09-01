@@ -35,7 +35,7 @@ fn run_decoder_step(
     config: &StreamingConfig,
     state: &mut StreamingState,
     tokens: &[i64],
-) -> usize {
+) -> i64 {
     if !state.cross_kv_valid {
         compute_cross_kv(sessions, config, state);
     }
@@ -76,10 +76,7 @@ fn run_decoder_step(
         .try_extract_tensor::<f32>()
         .expect("extract logits");
     let vocab_size = config.vocab_size as usize;
-    state.logits_buffer.clear();
-    state
-        .logits_buffer
-        .extend_from_slice(&logits_data[..vocab_size]);
+    let next_token = argmax(&logits_data[..vocab_size]);
     let (k_shape, k_data) = outputs["out_k_self"]
         .try_extract_tensor::<f32>()
         .expect("extract out_k_self");
@@ -92,7 +89,7 @@ fn run_decoder_step(
     state.k_self.extend_from_slice(&k_data[..new_kv_len]);
     state.v_self.clear();
     state.v_self.extend_from_slice(&v_data[..new_kv_len]);
-    vocab_size
+    next_token
 }
 
 fn argmax(logits: &[f32]) -> i64 {
@@ -117,13 +114,11 @@ pub(super) fn decode_full(
     state.k_self.clear();
     state.v_self.clear();
     state.cache_seq_len = 0;
-    let vocab_size = run_decoder_step(sessions, config, state, &[config.bos_id]);
-    let mut current_token = argmax(&state.logits_buffer[..vocab_size]);
+    let mut current_token = run_decoder_step(sessions, config, state, &[config.bos_id]);
     let mut result = Vec::with_capacity(max_tokens as usize);
     while current_token != config.eos_id && (result.len() as i64) < max_tokens {
         result.push(current_token);
-        let vocab_size = run_decoder_step(sessions, config, state, &[current_token]);
-        current_token = argmax(&state.logits_buffer[..vocab_size]);
+        current_token = run_decoder_step(sessions, config, state, &[current_token]);
     }
     result
 }

@@ -2,8 +2,7 @@ use crate::settings::{resolve_shortcut, Settings, DEFAULT_SHORTCUT};
 
 #[test]
 fn parses_multi_key_array() {
-    let s: Settings =
-        serde_json::from_str(r#"{"shortcut":["Function","ControlLeft"]}"#).unwrap();
+    let s: Settings = serde_json::from_str(r#"{"shortcut":["Function","ControlLeft"]}"#).unwrap();
     assert_eq!(
         s.shortcut,
         Some(vec![rdev::Key::Function, rdev::Key::ControlLeft])
