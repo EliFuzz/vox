@@ -86,6 +86,28 @@ fn english_yep_pipeline_runs_end_to_end() {
 }
 
 #[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn whistle_date_pipeline_runs_end_to_end() {
+    run_e2e(
+        ModelId::MultilingualTiny,
+        "asr/audio/date.wav",
+        "January 5th, 2025.",
+        "whistle",
+    );
+}
+
+#[test]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn whistle_yep_pipeline_runs_end_to_end() {
+    run_e2e(
+        ModelId::MultilingualTiny,
+        "asr/audio/yep.wav",
+        "yeah",
+        "whistle",
+    );
+}
+
+#[test]
 fn debug_normalization_outputs() {
     let inputs = HashMap::from([
         ("January fifth, twenty twenty five.", "January 5, 2025."),

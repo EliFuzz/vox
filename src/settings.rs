@@ -7,18 +7,21 @@ pub enum ModelId {
     Multilingual,
     English,
     EnglishSmall,
+    MultilingualTiny,
 }
 impl ModelId {
     pub const ALL: &[ModelId] = &[
         ModelId::Multilingual,
         ModelId::English,
         ModelId::EnglishSmall,
+        ModelId::MultilingualTiny,
     ];
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Multilingual => "multilingual",
             Self::English => "english",
             Self::EnglishSmall => "english_small",
+            Self::MultilingualTiny => "multilingual_tiny",
         }
     }
     pub fn display_name(self) -> &'static str {
@@ -26,6 +29,7 @@ impl ModelId {
             Self::Multilingual => "Multilingual",
             Self::English => "English",
             Self::EnglishSmall => "English Small",
+            Self::MultilingualTiny => "Multilingual Tiny",
         }
     }
 }
@@ -81,6 +85,11 @@ pub fn save(settings: &Settings) {
     if let Ok(json) = serde_json::to_string_pretty(settings) {
         std::fs::write(&path, json).ok();
     }
+}
+pub fn update(apply_change: impl FnOnce(&mut Settings)) {
+    let mut settings = load();
+    apply_change(&mut settings);
+    save(&settings);
 }
 pub fn model_ready(id: ModelId) -> bool {
     let dir = model_path(id);

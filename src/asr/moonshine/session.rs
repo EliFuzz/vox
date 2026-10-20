@@ -2,8 +2,7 @@ use ort::session::Session;
 use serde::Deserialize;
 use std::path::Path;
 
-pub(super) const SAMPLE_RATE: usize = 16_000;
-pub(super) const MAX_CHUNK_SAMPLES: usize = SAMPLE_RATE * 30;
+pub(super) use crate::asr::engine::{MAX_CHUNK_SAMPLES, SAMPLE_RATE};
 pub(super) const MAX_TOKENS_PER_SECOND: f32 = 6.5;
 
 #[derive(Clone, Default, Deserialize)]

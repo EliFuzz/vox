@@ -5,6 +5,7 @@ pub fn ready_check_files(id: ModelId) -> &'static [&'static str] {
     match id {
         ModelId::Multilingual => &["encoder.mlmodelc"],
         ModelId::English => &["Encoder.mlmodelc"],
+        ModelId::MultilingualTiny => &["whistle.cact"],
         ModelId::EnglishSmall => &[
             "frontend.ort",
             "encoder.ort",
@@ -16,6 +17,9 @@ pub fn ready_check_files(id: ModelId) -> &'static [&'static str] {
         ],
     }
 }
+
+pub(super) const SAMPLE_RATE: usize = 16_000;
+pub(super) const MAX_CHUNK_SAMPLES: usize = SAMPLE_RATE * 30;
 
 pub trait AsrEngine: Send {
     fn max_chunk_samples(&self) -> usize;
@@ -33,6 +37,7 @@ impl Asr {
                 Box::new(super::parakeet::ParakeetAsr::new(model_id, model_dir))
             }
             ModelId::EnglishSmall => Box::new(super::moonshine::MoonshineAsr::new(model_dir)),
+            ModelId::MultilingualTiny => Box::new(super::whistle::WhistleAsr::new(model_dir)),
         };
         Self { engine }
     }

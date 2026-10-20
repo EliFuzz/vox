@@ -1,11 +1,11 @@
+use super::{TrayMsg, TrayState};
 use crate::audio;
 use crate::settings::ModelId;
+use crate::settings::{load, model_path, update, Mode};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use tray_icon::menu::{CheckMenuItem, MenuEvent, MenuId};
 use tray_icon::{Icon, TrayIcon};
-
-use super::{TrayMsg, TrayState};
 
 pub(crate) fn handle_menu_event(
     event: MenuEvent,
@@ -39,12 +39,14 @@ pub(crate) fn handle_menu_event(
             ptt_item.set_checked(true);
             ttt_item.set_checked(false);
             recording_mode.store(crate::MODE_PTT, Ordering::Release);
+            update(|settings| settings.mode = Mode::PushToTalk);
             false
         }
         id if id == ttt_id => {
             ttt_item.set_checked(true);
             ptt_item.set_checked(false);
             recording_mode.store(crate::MODE_TTT, Ordering::Release);
+            update(|settings| settings.mode = Mode::ToggleToTalk);
             false
         }
         _ => match model_ids
@@ -57,8 +59,7 @@ pub(crate) fn handle_menu_event(
                     mi.set_checked(avail_id == model_id);
                 }
                 load_cancel.store(true, Ordering::Release);
-                if asr_holder.lock().unwrap().is_some() && crate::settings::load().model == model_id
-                {
+                if asr_holder.lock().unwrap().is_some() && load().model == model_id {
                     tray_tx.send(TrayMsg::SetState(TrayState::Off)).ok();
                     return false;
                 }
@@ -80,16 +81,14 @@ pub(crate) fn handle_menu_event(
                     if cancel.load(Ordering::Acquire) {
                         return;
                     }
-                    let dir = crate::settings::model_path(model_id);
+                    let dir = model_path(model_id);
                     let asr = crate::asr::Asr::new(model_id, &dir);
                     let mut holder = asr_h.lock().unwrap();
                     if cancel.load(Ordering::Acquire) {
                         return;
                     }
                     *holder = Some(asr);
-                    let mut cfg = crate::settings::load();
-                    cfg.model = model_id;
-                    crate::settings::save(&cfg);
+                    update(|settings| settings.model = model_id);
                     ready.store(true, Ordering::Release);
                     tx_clone.send(TrayMsg::SetState(TrayState::Off)).ok();
                 });
@@ -102,6 +101,7 @@ pub(crate) fn handle_menu_event(
                     }
                     *selected_device.lock().unwrap() = Some(name.clone());
                     audio_capture.switch_device(Some(name.as_str()));
+                    update(|settings| settings.input_device = Some(name.clone()));
                     false
                 }
                 None => false,
