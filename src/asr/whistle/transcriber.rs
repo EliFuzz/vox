@@ -1,6 +1,8 @@
 use crate::asr::engine::{AsrEngine, MAX_CHUNK_SAMPLES};
 use crate::asr::whistle::needle::{load, transcribe};
+use crate::settings;
 use serde_json::{from_slice, Value};
+use std::ffi::CString;
 use std::fs::read;
 use std::path::Path;
 
@@ -8,6 +10,7 @@ const OUTPUT_CAPACITY_BYTES: usize = 30 * 4096;
 
 pub struct WhistleAsr {
     output_buffer: Vec<u8>,
+    language: Option<CString>,
 }
 
 impl WhistleAsr {
@@ -16,6 +19,9 @@ impl WhistleAsr {
         load(&model_bytes).expect("whistle load failed");
         Self {
             output_buffer: vec![0; OUTPUT_CAPACITY_BYTES],
+            language: CString::new(settings::load().language.trim().to_lowercase())
+                .ok()
+                .filter(|code| !code.as_bytes().is_empty()),
         }
     }
 
@@ -42,7 +48,7 @@ impl AsrEngine for WhistleAsr {
     }
 
     fn transcribe_chunk(&mut self, audio: &[f32]) -> String {
-        if let Err(error) = transcribe(audio, &mut self.output_buffer) {
+        if let Err(error) = transcribe(audio, self.language.as_ref(), &mut self.output_buffer) {
             eprintln!("whistle transcribe failed: {error}");
             return String::new();
         }

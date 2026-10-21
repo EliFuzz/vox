@@ -51,6 +51,8 @@ pub struct Settings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shortcut: Option<Vec<rdev::Key>>,
     pub input_device: Option<String>,
+    #[serde(default)]
+    pub language: String,
 }
 
 pub fn resolve_shortcut(shortcut: &Option<Vec<rdev::Key>>) -> Vec<rdev::Key> {

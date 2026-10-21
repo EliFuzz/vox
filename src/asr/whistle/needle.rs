@@ -1,5 +1,5 @@
 #[cfg(target_arch = "aarch64")]
-use std::ffi::{c_char, c_int, c_ulonglong, CStr};
+use std::ffi::{c_char, c_int, c_ulonglong, CStr, CString};
 #[cfg(target_arch = "aarch64")]
 use std::ptr::null;
 
@@ -41,7 +41,11 @@ pub fn load(model_bytes: &[u8]) -> Result<(), String> {
 }
 
 #[cfg_attr(not(target_arch = "aarch64"), allow(unused_variables))]
-pub fn transcribe(audio: &[f32], output: &mut [u8]) -> Result<(), String> {
+pub fn transcribe(
+    audio: &[f32],
+    language: Option<&CString>,
+    output: &mut [u8],
+) -> Result<(), String> {
     #[cfg(not(target_arch = "aarch64"))]
     return Err("Not supported on the current platform".into());
     #[cfg(target_arch = "aarch64")]
@@ -49,7 +53,7 @@ pub fn transcribe(audio: &[f32], output: &mut [u8]) -> Result<(), String> {
         needle_transcribe(
             audio.as_ptr(),
             audio.len() as c_int,
-            null(),
+            language.map_or(null(), |code| code.as_ptr()),
             null(),
             0,
             output.as_mut_ptr(),

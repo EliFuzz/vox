@@ -27,15 +27,16 @@ No giant window. No extra editor. No copy/paste dance.
 
 ## Under the hood
 
-| area             | details                                                 |
-| ---------------- | ------------------------------------------------------- |
-| input            | selectable microphone device                            |
-| speech detection | VAD-gated recording                                     |
-| transcription    | local ASR pipeline                                      |
-| models           | Multilingual, Multilingual Tiny, English, English Small |
-| engines          | Parakeet, Moonshine, Cactus (Whistle)                   |
-| post-processing  | sentence normalization + punctuation cleanup            |
-| output           | paste at cursor + restore previous clipboard            |
-| settings         | `~/.vox/settings.json`                                  |
-| model cache      | `~/.vox/models/`                                        |
-| model delivery   | downloads models when needed                            |
+| area             | details                                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------ |
+| input            | selectable microphone device                                                                     |
+| speech detection | VAD-gated recording                                                                              |
+| transcription    | local ASR pipeline                                                                               |
+| models           | Multilingual, Multilingual Tiny, English, English Small                                          |
+| engines          | Parakeet, Moonshine, Cactus (Whistle)                                                            |
+| post-processing  | sentence normalization + punctuation cleanup                                                     |
+| output           | paste at cursor + restore previous clipboard                                                     |
+| settings         | `~/.vox/settings.json`                                                                           |
+| language         | optional 2-letter (e.g. `en`, `de`) for multilingual models that support it; empty = auto-detect |
+| model cache      | `~/.vox/models/`                                                                                 |
+| model delivery   | downloads models when needed                                                                     |
